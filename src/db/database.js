@@ -62,11 +62,13 @@ export async function initDB() {
       )`,
     `CREATE TABLE IF NOT EXISTS projects (
         id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id     INTEGER NOT NULL DEFAULT 0,
         name        TEXT    NOT NULL,
         description TEXT,
         created_at  INTEGER NOT NULL,
         updated_at  INTEGER NOT NULL
       )`,
+    `CREATE INDEX IF NOT EXISTS idx_projects_user_id ON projects (user_id)`,
     `CREATE TABLE IF NOT EXISTS domains (
         id          INTEGER PRIMARY KEY AUTOINCREMENT,
         project_id  INTEGER NOT NULL,
@@ -136,6 +138,7 @@ export async function initDB() {
 // ─── Row mappers ─────────────────────────────────────────────────────────────
 const mapProject = (r) => ({
   id:          Number(r.id),
+  userId:      Number(r.user_id),
   name:        r.name,
   description: r.description || '',
   createdAt:   Number(r.created_at),
@@ -198,42 +201,52 @@ const mapGeneratedSpec = (r) => ({
 })
 
 // ─── Projects ────────────────────────────────────────────────────────────────
-export async function createProject({ name, description = '' }) {
+export async function createProject({ userId, name, description = '' }) {
   const now = Date.now()
   const res = await client.execute({
-    sql:  'INSERT INTO projects (name, description, created_at, updated_at) VALUES (?,?,?,?)',
-    args: [name, description, now, now],
+    sql:  'INSERT INTO projects (user_id, name, description, created_at, updated_at) VALUES (?,?,?,?,?)',
+    args: [userId, name, description, now, now],
   })
   notifyChange()
   return Number(res.lastInsertRowid)
 }
 
-export async function getProjects() {
-  const res = await client.execute('SELECT * FROM projects ORDER BY created_at DESC')
+export async function getProjects(userId) {
+  const res = await client.execute({
+    sql:  'SELECT * FROM projects WHERE user_id = ? ORDER BY created_at DESC',
+    args: [userId],
+  })
   return res.rows.map(mapProject)
 }
 
-export async function getProject(id) {
-  const res = await client.execute({ sql: 'SELECT * FROM projects WHERE id = ?', args: [id] })
+export async function getProject(id, userId) {
+  const res = await client.execute({
+    sql:  'SELECT * FROM projects WHERE id = ? AND user_id = ?',
+    args: [id, userId],
+  })
   return res.rows[0] ? mapProject(res.rows[0]) : null
 }
 
-export async function updateProject(id, { name, description }) {
+export async function updateProject(id, { userId, name, description }) {
   await client.execute({
-    sql:  'UPDATE projects SET name=?, description=?, updated_at=? WHERE id=?',
-    args: [name, description, Date.now(), id],
+    sql:  'UPDATE projects SET name=?, description=?, updated_at=? WHERE id=? AND user_id=?',
+    args: [name, description, Date.now(), id, userId],
   })
   notifyChange()
 }
 
-export async function deleteProject(id) {
+export async function deleteProject(id, userId) {
+  // Verify ownership before deleting
+  const project = await getProject(id, userId)
+  if (!project) throw new Error('Project not found or access denied.')
   await client.batch([
+    { sql: 'DELETE FROM friday_items    WHERE project_id=?', args: [id] },
     { sql: 'DELETE FROM generated_specs WHERE project_id=?', args: [id] },
     { sql: 'DELETE FROM data_bags       WHERE project_id=?', args: [id] },
     { sql: 'DELETE FROM test_cases      WHERE project_id=?', args: [id] },
     { sql: 'DELETE FROM requirements    WHERE project_id=?', args: [id] },
     { sql: 'DELETE FROM domains         WHERE project_id=?', args: [id] },
-    { sql: 'DELETE FROM projects        WHERE id=?',         args: [id] },
+    { sql: 'DELETE FROM projects        WHERE id=? AND user_id=?', args: [id, userId] },
   ], 'write')
   notifyChange()
 }
@@ -472,7 +485,10 @@ export async function getAllFridayItems() {
 }
 
 // ─── Aggregate helpers ────────────────────────────────────────────────────────
-export async function getRequirementCounts() {
-  const res = await client.execute('SELECT project_id, COUNT(*) as cnt FROM requirements GROUP BY project_id')
+export async function getRequirementCounts(userId) {
+  const res = await client.execute({
+    sql:  'SELECT r.project_id, COUNT(*) as cnt FROM requirements r JOIN projects p ON r.project_id = p.id WHERE p.user_id = ? GROUP BY r.project_id',
+    args: [userId],
+  })
   return res.rows.reduce((acc, r) => { acc[Number(r.project_id)] = Number(r.cnt); return acc }, {})
 }

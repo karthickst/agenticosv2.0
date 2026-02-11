@@ -36,26 +36,26 @@ function ProjectForm({ initial, onSave, onCancel }) {
 }
 
 export default function ProjectsPage() {
-  const { setActiveProject } = useStore()
+  const { setActiveProject, currentUser } = useStore()
   const [showCreate, setShowCreate] = useState(false)
   const [editing, setEditing] = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(null)
 
-  const projects   = useLiveQuery(() => getProjects(), [])
-  const reqCounts  = useLiveQuery(() => getRequirementCounts(), [])
+  const projects   = useLiveQuery(() => getProjects(currentUser.id), [currentUser.id])
+  const reqCounts  = useLiveQuery(() => getRequirementCounts(currentUser.id), [currentUser.id])
 
   const handleCreate = async (data) => {
-    await createProject(data)
+    await createProject({ ...data, userId: currentUser.id })
     setShowCreate(false)
   }
 
   const handleUpdate = async (data) => {
-    await updateProject(editing.id, data)
+    await updateProject(editing.id, { ...data, userId: currentUser.id })
     setEditing(null)
   }
 
   const handleDelete = async () => {
-    await deleteProject(confirmDelete.id)
+    await deleteProject(confirmDelete.id, currentUser.id)
     setConfirmDelete(null)
   }
 

@@ -378,13 +378,13 @@ function EditItemModal({ open, onClose, item, onSave }) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function FridayPage() {
-  const { activeProjectId } = useStore()
+  const { activeProjectId, currentUser } = useStore()
   const [selectedProjectId, setSelectedProjectId] = useState(activeProjectId)
   const [addLane, setAddLane]           = useState(null)   // lane id when adding
   const [editItem, setEditItem]         = useState(null)
   const [dragState, setDragState]       = useState({ draggingId: null, draggingItem: null, overLane: null })
 
-  const projects     = useLiveQuery(() => getProjects(), [])
+  const projects     = useLiveQuery(() => getProjects(currentUser.id), [currentUser.id])
   const requirements = useLiveQuery(
     () => selectedProjectId ? getRequirements(selectedProjectId) : Promise.resolve([]),
     [selectedProjectId]

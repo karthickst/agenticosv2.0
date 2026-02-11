@@ -19,6 +19,7 @@ import FridayPage        from './pages/FridayPage.jsx'
 
 export default function App() {
   const { activePage, activeProjectId, currentUser, authPage } = useStore()
+  const userId = currentUser?.id
   const [dbReady, setDbReady] = useState(false)
   const [dbError, setDbError] = useState(null)
 
@@ -31,8 +32,8 @@ export default function App() {
   }, [])
 
   const project = useLiveQuery(
-    () => activeProjectId ? getProject(activeProjectId) : Promise.resolve(null),
-    [activeProjectId]
+    () => activeProjectId && userId ? getProject(activeProjectId, userId) : Promise.resolve(null),
+    [activeProjectId, userId]
   )
 
   if (dbError) {
