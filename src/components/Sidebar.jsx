@@ -2,13 +2,14 @@ import React from 'react'
 import {
   FolderOpen, Globe, FileText, FlaskConical,
   Database, GitBranch, Sparkles, Settings,
-  ChevronLeft, ChevronRight, Cpu, LogOut
+  ChevronLeft, ChevronRight, Cpu, LogOut, LayoutGrid
 } from 'lucide-react'
 import { useStore } from '../store/useStore.js'
 
 const NAV = [
   { id: 'projects',    label: 'Projects',      icon: FolderOpen },
-  { id: 'domains',     label: 'Domains',       icon: Globe,        requiresProject: true },
+  { id: 'friday',      label: 'Friday',        icon: LayoutGrid,   dividerBefore: true },
+  { id: 'domains',     label: 'Domains',       icon: Globe,        requiresProject: true, dividerBefore: true },
   { id: 'requirements',label: 'Requirements',  icon: FileText,     requiresProject: true },
   { id: 'testcases',   label: 'Test Cases',    icon: FlaskConical, requiresProject: true },
   { id: 'databags',    label: 'Data Bags',     icon: Database,     requiresProject: true },
@@ -44,23 +45,35 @@ export default function Sidebar({ projectName }) {
 
       {/* Nav */}
       <nav className="flex-1 px-2 py-3 space-y-0.5">
-        {NAV.map(({ id, label, icon: Icon, requiresProject }) => {
+        {NAV.map(({ id, label, icon: Icon, requiresProject, dividerBefore }) => {
           const disabled = requiresProject && !activeProjectId
           const active = activePage === id
+          const isFriday = id === 'friday'
           return (
-            <button
-              key={id}
-              onClick={() => !disabled && setActivePage(id)}
-              disabled={disabled}
-              title={!sidebarOpen ? label : undefined}
-              className={`w-full flex items-center gap-3 px-2 py-2 rounded-lg text-sm transition-all duration-150
-                ${active ? 'bg-brand-600 text-white' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800'}
-                ${disabled ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer'}
-              `}
-            >
-              <Icon size={16} className="flex-shrink-0" />
-              {sidebarOpen && <span className="truncate">{label}</span>}
-            </button>
+            <React.Fragment key={id}>
+              {dividerBefore && sidebarOpen && (
+                <div className="border-t border-gray-800 my-1.5" />
+              )}
+              <button
+                onClick={() => !disabled && setActivePage(id)}
+                disabled={disabled}
+                title={!sidebarOpen ? label : undefined}
+                className={`w-full flex items-center gap-3 px-2 py-2 rounded-lg text-sm transition-all duration-150
+                  ${active
+                    ? isFriday
+                      ? 'bg-gradient-to-r from-blue-700 to-violet-700 text-white'
+                      : 'bg-brand-600 text-white'
+                    : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800'}
+                  ${disabled ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer'}
+                `}
+              >
+                <Icon size={16} className="flex-shrink-0" />
+                {sidebarOpen && <span className="truncate">{label}</span>}
+                {sidebarOpen && isFriday && !active && (
+                  <span className="ml-auto text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-900/60 text-blue-400 border border-blue-800/50">NEW</span>
+                )}
+              </button>
+            </React.Fragment>
           )
         })}
       </nav>

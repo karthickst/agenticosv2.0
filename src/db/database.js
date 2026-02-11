@@ -117,6 +117,19 @@ export async function initDB() {
         prompt      TEXT,
         created_at  INTEGER NOT NULL
       )`,
+    `CREATE TABLE IF NOT EXISTS friday_items (
+        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id     INTEGER NOT NULL,
+        requirement_id INTEGER,
+        title          TEXT    NOT NULL,
+        notes          TEXT,
+        priority       TEXT    NOT NULL DEFAULT 'medium',
+        swimlane       TEXT    NOT NULL DEFAULT 'backlog',
+        position       INTEGER NOT NULL DEFAULT 0,
+        status         TEXT    NOT NULL DEFAULT 'todo',
+        created_at     INTEGER NOT NULL,
+        updated_at     INTEGER NOT NULL
+      )`,
   ], 'write')
 }
 
@@ -389,6 +402,73 @@ export async function seedDemoUser() {
   if (!existing) {
     await createUser({ email: 'demo@demo.com', name: 'Demo User', password: 'Abc!123' })
   }
+}
+
+// ─── Friday (Project Management) ─────────────────────────────────────────────
+const mapFridayItem = (r) => ({
+  id:            Number(r.id),
+  projectId:     Number(r.project_id),
+  requirementId: r.requirement_id ? Number(r.requirement_id) : null,
+  title:         r.title,
+  notes:         r.notes         || '',
+  priority:      r.priority      || 'medium',
+  swimlane:      r.swimlane      || 'backlog',
+  position:      Number(r.position),
+  status:        r.status        || 'todo',
+  createdAt:     Number(r.created_at),
+  updatedAt:     Number(r.updated_at),
+})
+
+export async function getFridayItems(projectId) {
+  const res = await client.execute({
+    sql:  'SELECT * FROM friday_items WHERE project_id=? ORDER BY swimlane ASC, position ASC',
+    args: [projectId],
+  })
+  return res.rows.map(mapFridayItem)
+}
+
+export async function getFridayItemsByRequirement(requirementId) {
+  const res = await client.execute({
+    sql:  'SELECT * FROM friday_items WHERE requirement_id=?',
+    args: [requirementId],
+  })
+  return res.rows.map(mapFridayItem)
+}
+
+export async function createFridayItem({ projectId, requirementId = null, title, notes = '', priority = 'medium', swimlane = 'backlog', position = 0, status = 'todo' }) {
+  const now = Date.now()
+  const res = await client.execute({
+    sql:  'INSERT INTO friday_items (project_id, requirement_id, title, notes, priority, swimlane, position, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)',
+    args: [projectId, requirementId, title, notes, priority, swimlane, position, status, now, now],
+  })
+  notifyChange()
+  return Number(res.lastInsertRowid)
+}
+
+export async function updateFridayItem(id, { title, notes, priority, swimlane, position, status }) {
+  await client.execute({
+    sql:  'UPDATE friday_items SET title=?, notes=?, priority=?, swimlane=?, position=?, status=?, updated_at=? WHERE id=?',
+    args: [title, notes, priority, swimlane, position, status, Date.now(), id],
+  })
+  notifyChange()
+}
+
+export async function moveFridayItem(id, { swimlane, position }) {
+  await client.execute({
+    sql:  'UPDATE friday_items SET swimlane=?, position=?, updated_at=? WHERE id=?',
+    args: [swimlane, position, Date.now(), id],
+  })
+  notifyChange()
+}
+
+export async function deleteFridayItem(id) {
+  await client.execute({ sql: 'DELETE FROM friday_items WHERE id=?', args: [id] })
+  notifyChange()
+}
+
+export async function getAllFridayItems() {
+  const res = await client.execute('SELECT * FROM friday_items ORDER BY project_id ASC, swimlane ASC, position ASC')
+  return res.rows.map(mapFridayItem)
 }
 
 // ─── Aggregate helpers ────────────────────────────────────────────────────────

@@ -15,6 +15,7 @@ import SpecGeneratorPage from './pages/SpecGeneratorPage.jsx'
 import SettingsPage      from './pages/SettingsPage.jsx'
 import LoginPage         from './pages/LoginPage.jsx'
 import SignupPage        from './pages/SignupPage.jsx'
+import FridayPage        from './pages/FridayPage.jsx'
 
 export default function App() {
   const { activePage, activeProjectId, currentUser, authPage } = useStore()
@@ -65,6 +66,7 @@ export default function App() {
 
   const pages = {
     projects:     <ProjectsPage />,
+    friday:       <FridayPage />,
     domains:      <DomainsPage />,
     requirements: <RequirementsPage />,
     testcases:    <TestCasesPage />,
