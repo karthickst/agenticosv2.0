@@ -2,7 +2,7 @@ import React from 'react'
 import {
   FolderOpen, Globe, FileText, FlaskConical,
   Database, GitBranch, Sparkles, Settings,
-  ChevronLeft, ChevronRight, Cpu
+  ChevronLeft, ChevronRight, Cpu, LogOut
 } from 'lucide-react'
 import { useStore } from '../store/useStore.js'
 
@@ -17,7 +17,7 @@ const NAV = [
 ]
 
 export default function Sidebar({ projectName }) {
-  const { activePage, setActivePage, sidebarOpen, toggleSidebar, activeProjectId } = useStore()
+  const { activePage, setActivePage, sidebarOpen, toggleSidebar, activeProjectId, currentUser, logout } = useStore()
 
   return (
     <aside className={`flex flex-col bg-gray-900 border-r border-gray-800 transition-all duration-200 ${sidebarOpen ? 'w-56' : 'w-14'}`}>
@@ -85,6 +85,28 @@ export default function Sidebar({ projectName }) {
           {sidebarOpen && <span>Collapse</span>}
         </button>
       </div>
+
+      {/* User info + logout */}
+      {currentUser && (
+        <div className={`px-2 py-3 border-t border-gray-800 ${sidebarOpen ? 'flex items-center gap-2' : 'flex flex-col items-center gap-1'}`}>
+          <div className="w-7 h-7 flex-shrink-0 rounded-full bg-brand-700 flex items-center justify-center text-xs font-bold text-white uppercase">
+            {currentUser.name?.[0] || currentUser.email?.[0] || '?'}
+          </div>
+          {sidebarOpen && (
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-medium text-gray-300 truncate">{currentUser.name}</div>
+              <div className="text-[10px] text-gray-600 truncate">{currentUser.email}</div>
+            </div>
+          )}
+          <button
+            onClick={logout}
+            title="Sign out"
+            className="flex-shrink-0 p-1.5 rounded-lg text-gray-500 hover:text-red-400 hover:bg-red-900/20 transition-colors"
+          >
+            <LogOut size={14} />
+          </button>
+        </div>
+      )}
     </aside>
   )
 }

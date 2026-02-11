@@ -29,10 +29,37 @@ export function onDBChange(fn) {
   return () => _listeners.delete(fn)
 }
 
+// ─── Password hashing (Web Crypto API) ───────────────────────────────────────
+async function hashPassword(password) {
+  const salt = crypto.getRandomValues(new Uint8Array(16))
+  const saltHex = Array.from(salt).map(b => b.toString(16).padStart(2, '0')).join('')
+  const encoder = new TextEncoder()
+  const data = encoder.encode(saltHex + password)
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data)
+  const hashHex = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('')
+  return `${saltHex}:${hashHex}`
+}
+
+async function verifyPassword(password, storedHash) {
+  const [saltHex, expectedHash] = storedHash.split(':')
+  const encoder = new TextEncoder()
+  const data = encoder.encode(saltHex + password)
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data)
+  const hashHex = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('')
+  return hashHex === expectedHash
+}
+
 // ─── Schema init ─────────────────────────────────────────────────────────────
 // Pass DDL as plain strings — stmtToHrana handles strings without touching .args
 export async function initDB() {
   await client.batch([
+    `CREATE TABLE IF NOT EXISTS users (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        email      TEXT    NOT NULL UNIQUE,
+        name       TEXT    NOT NULL,
+        password   TEXT    NOT NULL,
+        created_at INTEGER NOT NULL
+      )`,
     `CREATE TABLE IF NOT EXISTS projects (
         id          INTEGER PRIMARY KEY AUTOINCREMENT,
         name        TEXT    NOT NULL,
@@ -327,6 +354,41 @@ export async function saveGeneratedSpec({ projectId, content, model = '', specTy
 export async function getGeneratedSpecs(projectId) {
   const res = await client.execute({ sql: 'SELECT * FROM generated_specs WHERE project_id=? ORDER BY created_at DESC', args: [projectId] })
   return res.rows.map(mapGeneratedSpec)
+}
+
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+export async function createUser({ email, name, password }) {
+  const existing = await findUserByEmail(email)
+  if (existing) throw new Error('An account with this email already exists.')
+  const hashed = await hashPassword(password)
+  const res = await client.execute({
+    sql:  'INSERT INTO users (email, name, password, created_at) VALUES (?,?,?,?)',
+    args: [email.toLowerCase().trim(), name.trim(), hashed, Date.now()],
+  })
+  return { id: Number(res.lastInsertRowid), email: email.toLowerCase().trim(), name: name.trim() }
+}
+
+export async function findUserByEmail(email) {
+  const res = await client.execute({
+    sql:  'SELECT * FROM users WHERE email = ?',
+    args: [email.toLowerCase().trim()],
+  })
+  return res.rows[0] || null
+}
+
+export async function loginUser({ email, password }) {
+  const user = await findUserByEmail(email)
+  if (!user) throw new Error('Invalid email or password.')
+  const valid = await verifyPassword(password, user.password)
+  if (!valid) throw new Error('Invalid email or password.')
+  return { id: Number(user.id), email: user.email, name: user.name }
+}
+
+export async function seedDemoUser() {
+  const existing = await findUserByEmail('demo@demo.com')
+  if (!existing) {
+    await createUser({ email: 'demo@demo.com', name: 'Demo User', password: 'Abc!123' })
+  }
 }
 
 // ─── Aggregate helpers ────────────────────────────────────────────────────────

@@ -9,6 +9,8 @@ export const useStore = create(
       sidebarOpen: true,
       claudeApiKey: '',
       claudeModel: 'claude-opus-4-5-20251101',
+      currentUser: null,
+      authPage: 'login',
 
       setActiveProject: (id) => set({ activeProjectId: id, activePage: 'requirements' }),
       clearActiveProject: () => set({ activeProjectId: null, activePage: 'projects' }),
@@ -16,6 +18,9 @@ export const useStore = create(
       toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
       setClaudeApiKey: (key) => set({ claudeApiKey: key }),
       setClaudeModel: (model) => set({ claudeModel: model }),
+      setCurrentUser: (user) => set({ currentUser: user }),
+      logout: () => set({ currentUser: null, activeProjectId: null, activePage: 'projects' }),
+      setAuthPage: (page) => set({ authPage: page }),
     }),
     { name: 'agenticos-ui' }
   )

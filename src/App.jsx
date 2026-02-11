@@ -1,27 +1,30 @@
 import React, { useEffect, useState } from 'react'
 import Sidebar from './components/Sidebar.jsx'
 import { useStore } from './store/useStore.js'
-import { initDB, getProject } from './db/database.js'
+import { initDB, getProject, seedDemoUser } from './db/database.js'
 import { useLiveQuery } from './hooks/useLiveQuery.js'
 import { Loader2, AlertTriangle } from 'lucide-react'
 
-import ProjectsPage     from './pages/ProjectsPage.jsx'
-import DomainsPage      from './pages/DomainsPage.jsx'
-import RequirementsPage from './pages/RequirementsPage.jsx'
-import TestCasesPage    from './pages/TestCasesPage.jsx'
-import DataBagsPage     from './pages/DataBagsPage.jsx'
-import SimulationPage   from './pages/SimulationPage.jsx'
+import ProjectsPage      from './pages/ProjectsPage.jsx'
+import DomainsPage       from './pages/DomainsPage.jsx'
+import RequirementsPage  from './pages/RequirementsPage.jsx'
+import TestCasesPage     from './pages/TestCasesPage.jsx'
+import DataBagsPage      from './pages/DataBagsPage.jsx'
+import SimulationPage    from './pages/SimulationPage.jsx'
 import SpecGeneratorPage from './pages/SpecGeneratorPage.jsx'
-import SettingsPage     from './pages/SettingsPage.jsx'
+import SettingsPage      from './pages/SettingsPage.jsx'
+import LoginPage         from './pages/LoginPage.jsx'
+import SignupPage        from './pages/SignupPage.jsx'
 
 export default function App() {
-  const { activePage, activeProjectId } = useStore()
+  const { activePage, activeProjectId, currentUser, authPage } = useStore()
   const [dbReady, setDbReady] = useState(false)
   const [dbError, setDbError] = useState(null)
 
-  // Initialise Turso schema once on startup
+  // Initialise Turso schema once on startup, then seed demo user
   useEffect(() => {
     initDB()
+      .then(() => seedDemoUser())
       .then(() => setDbReady(true))
       .catch(err => setDbError(err?.message || String(err)))
   }, [])
@@ -53,6 +56,11 @@ export default function App() {
         </div>
       </div>
     )
+  }
+
+  // Auth gate — show login/signup if no user session
+  if (!currentUser) {
+    return authPage === 'signup' ? <SignupPage /> : <LoginPage />
   }
 
   const pages = {
