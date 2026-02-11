@@ -68,7 +68,6 @@ export async function initDB() {
         created_at  INTEGER NOT NULL,
         updated_at  INTEGER NOT NULL
       )`,
-    `CREATE INDEX IF NOT EXISTS idx_projects_user_id ON projects (user_id)`,
     `CREATE TABLE IF NOT EXISTS domains (
         id          INTEGER PRIMARY KEY AUTOINCREMENT,
         project_id  INTEGER NOT NULL,
@@ -133,6 +132,16 @@ export async function initDB() {
         updated_at     INTEGER NOT NULL
       )`,
   ], 'write')
+
+  // ── Column migrations (ALTER TABLE is not idempotent in SQLite, so we
+  //    attempt each and swallow "duplicate column" errors) ──────────────────
+  const migrations = [
+    'ALTER TABLE projects ADD COLUMN user_id INTEGER NOT NULL DEFAULT 0',
+    'CREATE INDEX IF NOT EXISTS idx_projects_user_id ON projects (user_id)',
+  ]
+  for (const sql of migrations) {
+    try { await client.execute(sql) } catch { /* column/index already exists */ }
+  }
 }
 
 // ─── Row mappers ─────────────────────────────────────────────────────────────
