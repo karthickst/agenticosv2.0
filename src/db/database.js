@@ -131,6 +131,18 @@ export async function initDB() {
         created_at     INTEGER NOT NULL,
         updated_at     INTEGER NOT NULL
       )`,
+    `CREATE TABLE IF NOT EXISTS tracker_items (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id  INTEGER NOT NULL,
+        title       TEXT    NOT NULL DEFAULT '',
+        owner       TEXT    NOT NULL DEFAULT '',
+        due_date    TEXT    NOT NULL DEFAULT '',
+        status      TEXT    NOT NULL DEFAULT 'on_track',
+        comments    TEXT    NOT NULL DEFAULT '',
+        position    INTEGER NOT NULL DEFAULT 0,
+        created_at  INTEGER NOT NULL,
+        updated_at  INTEGER NOT NULL
+      )`,
   ], 'write')
 
   // ── Column migrations (ALTER TABLE is not idempotent in SQLite, so we
@@ -491,6 +503,51 @@ export async function deleteFridayItem(id) {
 export async function getAllFridayItems() {
   const res = await client.execute('SELECT * FROM friday_items ORDER BY project_id ASC, swimlane ASC, position ASC')
   return res.rows.map(mapFridayItem)
+}
+
+// ─── Tracker Items ────────────────────────────────────────────────────────────
+const mapTrackerItem = (r) => ({
+  id:        Number(r.id),
+  projectId: Number(r.project_id),
+  title:     r.title     || '',
+  owner:     r.owner     || '',
+  dueDate:   r.due_date  || '',
+  status:    r.status    || 'on_track',
+  comments:  r.comments  || '',
+  position:  Number(r.position),
+  createdAt: Number(r.created_at),
+  updatedAt: Number(r.updated_at),
+})
+
+export async function getTrackerItems(projectId) {
+  const res = await client.execute({
+    sql:  'SELECT * FROM tracker_items WHERE project_id=? ORDER BY position ASC',
+    args: [projectId],
+  })
+  return res.rows.map(mapTrackerItem)
+}
+
+export async function createTrackerItem({ projectId, title = '', owner = '', dueDate = '', status = 'on_track', comments = '', position = 0 }) {
+  const now = Date.now()
+  const res = await client.execute({
+    sql:  'INSERT INTO tracker_items (project_id, title, owner, due_date, status, comments, position, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)',
+    args: [projectId, title, owner, dueDate, status, comments, position, now, now],
+  })
+  notifyChange()
+  return Number(res.lastInsertRowid)
+}
+
+export async function updateTrackerItem(id, { title, owner, dueDate, status, comments, position }) {
+  await client.execute({
+    sql:  'UPDATE tracker_items SET title=?, owner=?, due_date=?, status=?, comments=?, position=?, updated_at=? WHERE id=?',
+    args: [title, owner, dueDate, status, comments, position, Date.now(), id],
+  })
+  notifyChange()
+}
+
+export async function deleteTrackerItem(id) {
+  await client.execute({ sql: 'DELETE FROM tracker_items WHERE id=?', args: [id] })
+  notifyChange()
 }
 
 // ─── Aggregate helpers ────────────────────────────────────────────────────────

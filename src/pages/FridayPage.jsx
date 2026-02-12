@@ -1,14 +1,16 @@
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useCallback } from 'react'
 import {
   LayoutGrid, Plus, Trash2, GripVertical, ChevronDown,
   Circle, CheckCircle2, Clock, AlertCircle, XCircle,
-  Flag, MoreHorizontal, X, FileText, Layers
+  Flag, MoreHorizontal, X, FileText, Layers, Table2,
+  User, CalendarDays, MessageSquare, CheckCheck, Ban, TrendingUp
 } from 'lucide-react'
 import { useLiveQuery } from '../hooks/useLiveQuery.js'
 import {
   getProjects, getRequirements,
   getFridayItems, createFridayItem, updateFridayItem,
   moveFridayItem, deleteFridayItem,
+  getTrackerItems, createTrackerItem, updateTrackerItem, deleteTrackerItem,
 } from '../db/database.js'
 import { useStore } from '../store/useStore.js'
 import Modal from '../components/Modal.jsx'
@@ -39,6 +41,13 @@ const STATUSES = [
 const getPriority   = (id) => PRIORITIES.find(p => p.id === id) || PRIORITIES[2]
 const getStatus     = (id) => STATUSES.find(s => s.id === id)   || STATUSES[0]
 const getSwimlane   = (id) => SWIMLANES.find(s => s.id === id)  || SWIMLANES[0]
+
+const TRACKER_STATUSES = [
+  { id: 'on_track', label: 'On Track', icon: TrendingUp,   bg: 'bg-emerald-500/20', text: 'text-emerald-400', border: 'border-emerald-500/30', dot: 'bg-emerald-500' },
+  { id: 'blocked',  label: 'Blocked',  icon: Ban,          bg: 'bg-red-500/20',     text: 'text-red-400',     border: 'border-red-500/30',     dot: 'bg-red-500' },
+  { id: 'done',     label: 'Done',     icon: CheckCheck,   bg: 'bg-blue-500/20',    text: 'text-blue-400',    border: 'border-blue-500/30',    dot: 'bg-blue-500' },
+]
+const getTrackerStatus = (id) => TRACKER_STATUSES.find(s => s.id === id) || TRACKER_STATUSES[0]
 
 // ─── Item Card ────────────────────────────────────────────────────────────────
 function ItemCard({ item, onMove, onDelete, onEdit, isDragging, onDragStart, onDragEnd }) {
@@ -376,10 +385,249 @@ function EditItemModal({ open, onClose, item, onSave }) {
   )
 }
 
+// ─── Tracker Inline Cell ──────────────────────────────────────────────────────
+function EditableCell({ value, onChange, placeholder = '', type = 'text', className = '' }) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft]     = useState(value)
+  const inputRef              = useRef(null)
+
+  React.useEffect(() => { setDraft(value) }, [value])
+  React.useEffect(() => { if (editing && inputRef.current) inputRef.current.focus() }, [editing])
+
+  function commit() {
+    setEditing(false)
+    if (draft !== value) onChange(draft)
+  }
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        type={type}
+        value={draft}
+        onChange={e => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { setDraft(value); setEditing(false) } }}
+        className={`w-full bg-gray-800 border border-brand-500 rounded px-2 py-1 text-sm text-gray-100 outline-none ${className}`}
+      />
+    )
+  }
+
+  return (
+    <div
+      onClick={() => setEditing(true)}
+      className={`px-2 py-1 rounded cursor-text hover:bg-gray-800/60 transition-colors min-h-[30px] text-sm ${value ? 'text-gray-200' : 'text-gray-600'} ${className}`}
+    >
+      {value || <span className="italic">{placeholder}</span>}
+    </div>
+  )
+}
+
+// ─── Tracker Status Cell ──────────────────────────────────────────────────────
+function StatusCell({ value, onChange }) {
+  const [open, setOpen] = useState(false)
+  const st = getTrackerStatus(value)
+  const Icon = st.icon
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${st.bg} ${st.text} ${st.border} hover:opacity-80`}
+      >
+        <Icon size={11} />
+        {st.label}
+        <ChevronDown size={10} className="opacity-60" />
+      </button>
+      {open && (
+        <div className="absolute left-0 top-8 z-30 w-36 bg-gray-800 border border-gray-700 rounded-lg shadow-xl py-1 text-xs">
+          {TRACKER_STATUSES.map(s => {
+            const SIcon = s.icon
+            return (
+              <button
+                key={s.id}
+                className={`w-full px-3 py-1.5 text-left flex items-center gap-2 hover:bg-gray-700 ${s.text}`}
+                onClick={() => { onChange(s.id); setOpen(false) }}
+              >
+                <SIcon size={11} />
+                {s.label}
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Tracker View ─────────────────────────────────────────────────────────────
+function TrackerView({ projectId }) {
+  const items = useLiveQuery(
+    () => projectId ? getTrackerItems(projectId) : Promise.resolve([]),
+    [projectId]
+  )
+
+  async function handleAdd() {
+    const position = (items || []).length
+    await createTrackerItem({ projectId, title: '', owner: '', dueDate: '', status: 'on_track', comments: '', position })
+  }
+
+  async function handleUpdate(item, patch) {
+    await updateTrackerItem(item.id, {
+      title:    patch.title    !== undefined ? patch.title    : item.title,
+      owner:    patch.owner    !== undefined ? patch.owner    : item.owner,
+      dueDate:  patch.dueDate  !== undefined ? patch.dueDate  : item.dueDate,
+      status:   patch.status   !== undefined ? patch.status   : item.status,
+      comments: patch.comments !== undefined ? patch.comments : item.comments,
+      position: item.position,
+    })
+  }
+
+  async function handleDelete(id) {
+    await deleteTrackerItem(id)
+  }
+
+  const rows = items || []
+
+  // Stats
+  const total    = rows.length
+  const onTrack  = rows.filter(r => r.status === 'on_track').length
+  const blocked  = rows.filter(r => r.status === 'blocked').length
+  const done     = rows.filter(r => r.status === 'done').length
+
+  return (
+    <div className="flex-1 overflow-auto p-6">
+      {/* Stats strip */}
+      {total > 0 && (
+        <div className="flex gap-3 mb-5">
+          {[
+            { label: 'Total',    count: total,   color: 'text-gray-400', bg: 'bg-gray-800' },
+            { label: 'On Track', count: onTrack,  color: 'text-emerald-400', bg: 'bg-emerald-900/20' },
+            { label: 'Blocked',  count: blocked,  color: 'text-red-400',     bg: 'bg-red-900/20' },
+            { label: 'Done',     count: done,     color: 'text-blue-400',    bg: 'bg-blue-900/20' },
+          ].map(s => (
+            <div key={s.label} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${s.bg}`}>
+              <span className={`text-sm font-bold ${s.color}`}>{s.count}</span>
+              <span className="text-xs text-gray-500">{s.label}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Table */}
+      <div className="rounded-xl border border-gray-800 overflow-hidden">
+        {/* Header */}
+        <div className="grid bg-gray-900 border-b border-gray-800 text-xs font-semibold text-gray-500 uppercase tracking-wider"
+          style={{ gridTemplateColumns: '40px 1fr 160px 140px 160px 1fr 44px' }}>
+          <div className="px-3 py-3 text-center">#</div>
+          <div className="px-3 py-3 flex items-center gap-1.5"><FileText size={11} /> Task</div>
+          <div className="px-3 py-3 flex items-center gap-1.5"><User size={11} /> Owner</div>
+          <div className="px-3 py-3 flex items-center gap-1.5"><CalendarDays size={11} /> Due Date</div>
+          <div className="px-3 py-3 flex items-center gap-1.5"><TrendingUp size={11} /> Status</div>
+          <div className="px-3 py-3 flex items-center gap-1.5"><MessageSquare size={11} /> Comments</div>
+          <div className="px-3 py-3" />
+        </div>
+
+        {/* Rows */}
+        {rows.length === 0 ? (
+          <div className="py-16 flex flex-col items-center justify-center text-center">
+            <div className="w-12 h-12 bg-gray-800 rounded-xl flex items-center justify-center mb-3">
+              <Table2 size={22} className="text-gray-600" />
+            </div>
+            <p className="text-gray-400 font-medium mb-1">No items yet</p>
+            <p className="text-xs text-gray-600 mb-4">Add your first task or test case to get started</p>
+            <button className="btn-primary" onClick={handleAdd}><Plus size={14} /> Add first item</button>
+          </div>
+        ) : (
+          <>
+            {rows.map((item, idx) => (
+              <div
+                key={item.id}
+                className="grid border-b border-gray-800 hover:bg-gray-900/50 transition-colors group items-center"
+                style={{ gridTemplateColumns: '40px 1fr 160px 140px 160px 1fr 44px' }}
+              >
+                {/* # */}
+                <div className="px-3 py-2 text-center text-xs text-gray-600 font-mono">{idx + 1}</div>
+
+                {/* Title */}
+                <div className="px-1 py-1.5">
+                  <EditableCell
+                    value={item.title}
+                    onChange={v => handleUpdate(item, { title: v })}
+                    placeholder="Task name..."
+                  />
+                </div>
+
+                {/* Owner */}
+                <div className="px-1 py-1.5">
+                  <EditableCell
+                    value={item.owner}
+                    onChange={v => handleUpdate(item, { owner: v })}
+                    placeholder="Assign owner..."
+                  />
+                </div>
+
+                {/* Due Date */}
+                <div className="px-2 py-1.5">
+                  <input
+                    type="date"
+                    value={item.dueDate}
+                    onChange={e => handleUpdate(item, { dueDate: e.target.value })}
+                    className="w-full bg-transparent border-0 text-sm text-gray-300 outline-none cursor-pointer hover:bg-gray-800/60 rounded px-1 py-0.5 [color-scheme:dark]"
+                  />
+                </div>
+
+                {/* Status */}
+                <div className="px-2 py-1.5">
+                  <StatusCell
+                    value={item.status}
+                    onChange={v => handleUpdate(item, { status: v })}
+                  />
+                </div>
+
+                {/* Comments */}
+                <div className="px-1 py-1.5">
+                  <EditableCell
+                    value={item.comments}
+                    onChange={v => handleUpdate(item, { comments: v })}
+                    placeholder="Add a comment..."
+                  />
+                </div>
+
+                {/* Delete */}
+                <div className="px-2 py-1.5 flex justify-center">
+                  <button
+                    onClick={() => handleDelete(item.id)}
+                    className="p-1 rounded text-gray-700 hover:text-red-400 hover:bg-red-900/20 opacity-0 group-hover:opacity-100 transition-all"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </>
+        )}
+
+        {/* Add row button */}
+        {rows.length > 0 && (
+          <button
+            onClick={handleAdd}
+            className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-gray-600 hover:text-gray-300 hover:bg-gray-800/40 transition-colors border-t border-gray-800/0 hover:border-gray-800"
+          >
+            <Plus size={14} />
+            Add item
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function FridayPage() {
   const { activeProjectId, currentUser } = useStore()
   const [selectedProjectId, setSelectedProjectId] = useState(activeProjectId)
+  const [activeTab, setActiveTab]       = useState('board')  // 'board' | 'tracker'
   const [addLane, setAddLane]           = useState(null)   // lane id when adding
   const [editItem, setEditItem]         = useState(null)
   const [dragState, setDragState]       = useState({ draggingId: null, draggingItem: null, overLane: null })
@@ -478,8 +726,24 @@ export default function FridayPage() {
           </div>
         </div>
 
+        {/* Tabs */}
+        <div className="flex items-center gap-1 ml-4 bg-gray-800 rounded-lg p-1">
+          <button
+            onClick={() => setActiveTab('board')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${activeTab === 'board' ? 'bg-gray-700 text-gray-100 shadow' : 'text-gray-500 hover:text-gray-300'}`}
+          >
+            <LayoutGrid size={12} /> Board
+          </button>
+          <button
+            onClick={() => setActiveTab('tracker')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${activeTab === 'tracker' ? 'bg-gray-700 text-gray-100 shadow' : 'text-gray-500 hover:text-gray-300'}`}
+          >
+            <Table2 size={12} /> Tracker
+          </button>
+        </div>
+
         {/* Project picker */}
-        <div className="flex items-center gap-2 ml-4">
+        <div className="flex items-center gap-2 ml-2">
           <Layers size={13} className="text-gray-500 flex-shrink-0" />
           <select
             className="bg-gray-800 border border-gray-700 rounded-lg px-2.5 py-1.5 text-sm text-gray-200 focus:outline-none focus:ring-1 focus:ring-brand-500"
@@ -493,8 +757,8 @@ export default function FridayPage() {
           </select>
         </div>
 
-        {/* Progress */}
-        {total > 0 && (
+        {/* Progress (board tab only) */}
+        {activeTab === 'board' && total > 0 && (
           <div className="ml-auto flex items-center gap-3">
             <div className="text-right">
               <div className="text-xs text-gray-500">{doneCount}/{total} done</div>
@@ -509,7 +773,7 @@ export default function FridayPage() {
           </div>
         )}
 
-        {selectedProjectId && (
+        {selectedProjectId && activeTab === 'board' && (
           <button
             className="btn-primary ml-auto"
             onClick={() => setAddLane('backlog')}
@@ -519,7 +783,7 @@ export default function FridayPage() {
         )}
       </div>
 
-      {/* ── Board ── */}
+      {/* ── Content ── */}
       {!selectedProjectId ? (
         <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
           <div className="w-16 h-16 bg-gray-800 rounded-2xl flex items-center justify-center mb-4">
@@ -528,6 +792,8 @@ export default function FridayPage() {
           <h3 className="text-gray-300 font-semibold mb-1">Select a project</h3>
           <p className="text-sm text-gray-600">Choose a project above to manage its requirements on the board</p>
         </div>
+      ) : activeTab === 'tracker' ? (
+        <TrackerView projectId={selectedProjectId} />
       ) : (
         <div className="flex-1 overflow-x-auto overflow-y-auto p-6">
           <div className="flex gap-4 h-full min-w-max pb-4">
